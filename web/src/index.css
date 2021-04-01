@@ -26,3 +26,18 @@ body {
 .book {
   margin: 0 10px 10px;
 }
+
+.input-note {
+    text-align: right;
+    font-size: smaller;
+    font-style: italic;
+}
+
+.input-note:before {
+    content: "* ";
+}
+
+.bad-input,
+.bad-input:focus {
+    background-color: rgba(255, 0, 0, 0.1);
+}

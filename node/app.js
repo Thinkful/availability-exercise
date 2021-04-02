@@ -4,45 +4,59 @@ const cors = require("cors");
 const bodyParser = require("body-parser");
 const fetch = require("node-fetch");
 
+const { isValidUser } = require("./sanity");
+const { getTimeStore, encodeDatedTimeSlots } = require("./timestore");
+
 const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
-app.get("/today", (req, res) => {
+app.get("/api/today", (req, res) => {
     res.send({
         today: today(),
-        user: 654321,
     });
 });
 
-// Dumb cached relay for availability data from thinkful
-var availabilityCache = null;
+let timeStore;
 
-app.get("/availability", (req, res) => {
-    if (availabilityCache) {
-        res.json(availabilityCache);
-    } else {
-        fetch('https://www.thinkful.com/api/advisors/availability').then(res => res.json()).then(data => {
-            availabilityCache = data;
-            res.send(data);
-        });
-    }
+getTimeStore().then(ts => {
+    timeStore = ts;
 })
 
-const FULL_NAME_PATTERN = /^[a-zA-Z]+(([',. -][a-zA-Z ])?[a-zA-Z]*)*$/;
+app.get("/api/availability", (req, res) => {
+    res.json(encodeDatedTimeSlots(timeStore.unbooked()));
+})
 
-app.get("/booked/:user", (req, res) => {
-    const { user } = req.params;
-    if (!FULL_NAME_PATTERN.test(user)) {
+app.get("/api/booked", (req, res) => {
+    const { user } = req.query;
+    if (!isValidUser(user)) {
         return res.status(400).end();
     }
-    res.send([
-        {
-            time: "2019-04-04T11:00:00-04:00",
-            advisor: 372955,
-            user: "Don",
-        }
-    ]);
+    res.send(timeStore.booked(user));
+})
+
+app.post("/api/book", (req, res) => {
+    const { user, advisor, time: rawTime } = req.query;
+    if (!isValidUser(user)) {
+        return res.status(400).end();
+    }
+    const slot = timeStore.book(user, Number(advisor), rawTime);
+    if (!slot) {
+        return res.status(400).end();
+    }
+    res.send(timeStore.booked(user));
+})
+
+app.post("/api/cancel", (req, res) => {
+    const { user, advisor, time: rawTime } = req.query;
+    if (!isValidUser(user)) {
+        return res.status(400).end();
+    }
+    const slot = timeStore.cancel(user, Number(advisor), rawTime);
+    if (!slot) {
+        return res.status(400).end();
+    }
+    res.send(timeStore.booked(user));
 })
 
 function today() {

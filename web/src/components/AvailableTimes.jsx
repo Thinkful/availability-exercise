@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useContext } from "react";
 import { observer } from "mobx-react";
 
-import { appModel } from "../models/AppModel";
-import { formattedTime } from "../models/timeslots";
+import { AppContext } from "../models/AppContext";
+import { availableAdvisors, filterByAdvisor, formattedTime } from "../models/timeslots";
 
-export const AvailableTimes = observer(() => {
+export const AvailableTimes = observer(({ slots }) => {
+    const advisors = availableAdvisors(slots);
     return (
         <>
             <h2>Available Times</h2>
@@ -16,38 +17,45 @@ export const AvailableTimes = observer(() => {
                     </tr>
                 </thead>
                 <tbody>
-                    {appModel.availableAdvisors.map(advisor => (
-                            <AdvisorAvailableTimes advisor={advisor} key={advisor} />
+                    {advisors.map((advisor) => (
+                        <AdvisorAvailableTimes
+                            advisor={advisor}
+                            slots={filterByAdvisor(slots, advisor)}
+                            key={advisor}
+                        />
                     ))}
                 </tbody>
             </table>
         </>
-    )
+    );
 });
 
-const AdvisorAvailableTimes = observer(({ advisor }) => {
-    const slots = appModel.availableAdvisorTimeSlots(advisor);
+const AdvisorAvailableTimes = observer(({ advisor, slots }) => {
     return (
         <tr>
             <td>{advisor}</td>
             <td>
                 <ul className="list-unstyled">
-                    {slots.map(slot => (
-                        <AvailableTimeSlot slot={slot} key={`slot-${slot.advisor}-${slot.time.getTime()}`} />
+                    {slots.map((slot) => (
+                        <AvailableTimeSlot slot={slot} key={`slot-${slot.advisor}-${slot.time}`} />
                     ))}
                 </ul>
             </td>
         </tr>
-    )
+    );
 });
 
 const AvailableTimeSlot = observer(({ slot }) => {
-    const handleBooking = () => appModel.book(slot);
+    const { model } = useContext(AppContext);
+    const handleBook = () => model.book(slot);
     return (
         <li>
-            <time dateTime={slot.time.toUTCString()} className="book-time">{formattedTime(slot)}</time>
-            <button className="book btn-small btn-primary"
-                onClick={handleBooking}>Book</button>
+            <time dateTime={slot.time.toUTCString()} className="book-time">
+                {formattedTime(slot)}
+            </time>
+            <button className="book btn-small btn-primary" onClick={handleBook}>
+                Book
+            </button>
         </li>
-    )
+    );
 });

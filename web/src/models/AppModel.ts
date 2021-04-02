@@ -1,14 +1,25 @@
-import { action, autorun, computed, makeObservable, observable } from "mobx";
+import { action, autorun, makeObservable, observable } from "mobx";
 
-import { AdvisorID, TimeSlot, UserID } from "./types";
-import { fetchToday, fetchAvailability, fetchBooked } from "./api";
-import { availableAdvisors, filterByAdvisor } from "./timeslots";
+import { ITimeSlot, UserID } from "./types";
+import { fetchToday, fetchAvailability, fetchBooked, bookTimeSlot, cancelTimeSlot } from "./api";
 
-class AppModel {
+export interface IAppModel {
+    today: string;
+    name: UserID;
+    availableTimeSlots: ITimeSlot[];
+    bookedTimeSlots: ITimeSlot[];
+
+    load(): Promise<void>;
+
+    book(slot: ITimeSlot): Promise<void>;
+    setName(value: string): void;
+}
+
+export class AppModel implements IAppModel {
     today: string = '';
     name: UserID = '';
-    availableTimeSlots: TimeSlot[] = [];
-    bookedTimeSlots: TimeSlot[] = [];
+    availableTimeSlots: ITimeSlot[] = [];
+    bookedTimeSlots: ITimeSlot[] = [];
 
     constructor() {
         makeObservable(this, {
@@ -17,14 +28,15 @@ class AppModel {
             availableTimeSlots: observable,
             bookedTimeSlots: observable,
 
-            availableAdvisors: computed,
-            
-            setAvailableTimeSlots: action,
-            setBookedTimeSlots: action,
             setName: action,
             setToday: action,
+            setAvailableTimeSlots: action,
+            setBookedTimeSlots: action,
         });
 
+        // Auto update bookedTimeSlots when name changes.
+        // NOTE: name is not expected to change often so
+        // debouncing should be done in the component event handling.
         autorun(() => {
             if (this.name) {
                 this.updateBooked(this.name);
@@ -46,51 +58,71 @@ class AppModel {
         }
     }
 
-    setToday(value: string) {
-        this.today = value;
-    }
-
     setName(value: string) {
         this.name = value;
     }
 
-    setAvailableTimeSlots(value: TimeSlot[]) {
-        this.availableTimeSlots = value;
-    }
-
-    setBookedTimeSlots(value: TimeSlot[]) {
-        this.bookedTimeSlots = value;
-    }
-
-    get availableAdvisors(): AdvisorID[] {
-        return availableAdvisors(this.availableTimeSlots);
-    }
-
-    availableAdvisorTimeSlots(advisor: AdvisorID): TimeSlot[] {
-        return filterByAdvisor(this.availableTimeSlots, advisor);
-    }
-
-    async book(slot: TimeSlot) {
-        // TODO
+    async book(slot: ITimeSlot): Promise<void> {
         if (!this.name) {
             this.informUser("Please enter your name to book.");
+            return;
+        }
+
+        try {
+            const booked = await bookTimeSlot(slot, this.name);
+            this.setBookedTimeSlots(booked);
+            this.updateAvailableTimeSlots();
+        } catch (err) {
+            console.error(err);
+            this.informUser("Failed to book time.");
         }
     }
 
-    async updateBooked(name: string) {
+    async cancel(slot: ITimeSlot): Promise<void> {
         try {
-            const booked = await fetchBooked(this.name);
+            const booked = await cancelTimeSlot(slot, this.name);
             this.setBookedTimeSlots(booked);
+            this.updateAvailableTimeSlots();
+        } catch (err) {
+            console.error(err);
+            this.informUser("Failed to book time.");
+        }
+    }
+
+    setToday(value: string) {
+        this.today = value;
+    }
+
+    setAvailableTimeSlots(value: ITimeSlot[]) {
+        this.availableTimeSlots = value;
+    }
+
+    setBookedTimeSlots(value: ITimeSlot[]) {
+        this.bookedTimeSlots = value;
+    }
+
+    private async updateAvailableTimeSlots() {
+        try {
+            const slots = await fetchAvailability();
+            this.setAvailableTimeSlots(slots);
         } catch (err) {
             console.error(err);
             this.informUser("Failed to fetch booking data.");
         }
     }
 
-    informUser(message: string) {
+    private async updateBooked(name: string) {
+        try {
+            const slots = await fetchBooked(this.name);
+            this.setBookedTimeSlots(slots);
+        } catch (err) {
+            console.error(err);
+            this.informUser("Failed to fetch booking data.");
+        }
+    }
+
+    private informUser(message: string) {
         // TODO: replace with non-blocking UI, like Material UI's Snackbar.
         alert(message);
     }
 }
-
-export const appModel = new AppModel();

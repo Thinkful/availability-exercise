@@ -1,40 +1,71 @@
-import { TimeSlot, TodayData, UserID } from "./types";
-import { sortTimeSlots } from "./timeslots";
+import { ITimeSlot, ITodayData, RawTimeSlot, UserID } from "./types";
+import { API_BASE } from "./configs";
 
-export async function fetchToday(): Promise<TodayData> {
-    return fetch(`http://localhost:4433/today`).then(res => res.json());
+export async function fetchToday(): Promise<ITodayData> {
+    return fetch(`${API_BASE}/today`).then(res => res.json());
 }
-
 
 type DatedTimeSlots = Record<string, Record<string, number>>;
 
-function parseDatedTimeSlots(data: DatedTimeSlots): TimeSlot[] {
-    const timeslots: TimeSlot[] = [];
+function parseDatedTimeSlots(data: DatedTimeSlots): ITimeSlot[] {
+    const timeslots: ITimeSlot[] = [];
     for (const group of Object.values(data)) {
-        for (const [time, advisor] of Object.entries(group)) {
-            timeslots.push({ advisor, time: new Date(time)});
+        for (const [rawTime, advisor] of Object.entries(group)) {
+            timeslots.push({ advisor, rawTime, time: new Date(rawTime)});
         }
     }
-    return sortTimeSlots(timeslots);
+    return timeslots;
 }
 
+function makeTimeSlot(raw: RawTimeSlot): ITimeSlot {
+    return { ...raw, time: new Date(raw.rawTime) };
+}
 
 type RawAvailability  = DatedTimeSlots;
-type AvailabilityData = TimeSlot[];
+type AvailabilityData = ITimeSlot[];
 
 export async function fetchAvailability(): Promise<AvailabilityData> {
-    const data = await fetch(`http://localhost:4433/availability`).then(res => res.json()) as RawAvailability;
+    const data = await fetch(`${API_BASE}/availability`).then(res => res.json()) as RawAvailability;
     return parseDatedTimeSlots(data);
 }
 
-
-type RawBooked  = { advisor: number, time: string, user: string }[];
-type BookedData = TimeSlot[];
+type RawBooked  = RawTimeSlot[];
+type BookedData = ITimeSlot[];
 
 export async function fetchBooked(user: UserID): Promise<BookedData> {
-    const data = await fetch(`http://localhost:4433/booked/${user}`).then(res => res.json()) as RawBooked;
-    const slots = data.map(slot => {
-        return { advisor: slot.advisor, time: new Date(slot.time), user: slot.user } as TimeSlot;
+    const url = addParamsToUrl(`${API_BASE}/booked`, { user });
+    const data = await fetch(url).then(res => res.json()) as RawBooked;
+    return data.map(slot => makeTimeSlot(slot));
+}
+
+export async function bookTimeSlot(slot: ITimeSlot, user: UserID): Promise<BookedData> {
+    const url = addParamsToUrl(`${API_BASE}/book`, {
+        user,
+        advisor: String(slot.advisor),
+        time: slot.rawTime,
     });
-    return sortTimeSlots(slots);
+    const data = await fetch(url, { method: 'POST' }).then(res => res.json()) as RawBooked;
+    return data.map(slot => makeTimeSlot(slot));
+}
+
+export async function cancelTimeSlot(slot: ITimeSlot, user: UserID): Promise<BookedData> {
+    if (slot.user !== user) {
+        throw new Error('invalid cancel request');
+    }
+    const url = addParamsToUrl(`${API_BASE}/cancel`, {
+        user: user,
+        advisor: String(slot.advisor),
+        time: slot.rawTime,
+    });
+    const data = await fetch(url, { method: 'POST' }).then(res => res.json()) as RawBooked;
+    return data.map(slot => makeTimeSlot(slot));
+}
+
+// Adds URL params to URL
+function addParamsToUrl(url: string, params: Record<string, string>) {
+    const urlObj = new URL(url);
+    const urlParams = new URLSearchParams(urlObj.search);
+    Object.keys(params).forEach(key => urlParams.append(key, params[key]));
+    urlObj.search = urlParams.toString();
+    return urlObj.toString();
 }

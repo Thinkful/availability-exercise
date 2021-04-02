@@ -4,6 +4,8 @@
   "private": true,
   "dependencies": {
     "lodash.debounce": "^4.0.8",
+    "mobx": "^6.1.8",
+    "mobx-react": "^7.1.0",
     "react": "^16.8.6",
     "react-dom": "^16.8.6"
   },

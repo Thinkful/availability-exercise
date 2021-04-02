@@ -1,7 +1,11 @@
 import React from 'react';
-import { formattedTime } from "./timeslots";
+import { observer } from "mobx-react";
 
-export function BookedTimes({ booked }) {
+import { appModel } from "../models/AppModel";
+import { formattedTime } from "../models/timeslots";
+
+export const BookedTimes = observer(() => {
+    const slots = appModel.bookedTimeSlots;
     return (
         <>
             <h2>Booked Times</h2>
@@ -14,16 +18,16 @@ export function BookedTimes({ booked }) {
                     </tr>
                 </thead>
                 <tbody>
-                    {booked && booked.map(slot => (
+                    {slots.map(slot => (
                         <BookedTimeSlot slot={slot} key={`book-${slot.advisor}-${slot.time.getTime()}`} />
                     ))}
                 </tbody>
             </table>
         </>
     )
-}
+});
 
-function BookedTimeSlot({ slot, user }) {
+const BookedTimeSlot = observer(({ slot }) => {
     return (
         <tr >
             <td>{slot.advisor}</td>
@@ -33,4 +37,4 @@ function BookedTimeSlot({ slot, user }) {
             </td>
         </tr>
     )
-}
+});

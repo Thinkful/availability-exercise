@@ -7,8 +7,9 @@ const fetch = require("node-fetch");
 
 class TimeStore {
 
-    constructor(slots) {
+    constructor(slots, options = {}) {
         this.slots = slots;
+        this.options = options;
     }
 
     // Finds a timeslot identified uniquely by advisor and rawTime pair
@@ -26,20 +27,29 @@ class TimeStore {
         return this.slots.filter((s) => !s.user);
     }
 
+    /**
+     * Returns available timeslots in DatedTimeSlots format used by Thinkful API.
+     * 
+     * @returns timeslots in Thinkful API format.
+     */
+    unbookedDatedTimeSlots() {
+        return encodeDatedTimeSlots(this.unbooked());
+    }
+
     book(user, advisor, rawTime) {
         const slot = this.find(advisor, rawTime);
         if (!slot) {
-            console.error("book: missing timeslot", { user, advisor, rawTime })
+            this.log('error', "book: missing timeslot", { user, advisor, rawTime })
             return null;
         } else if (slot.user && slot.user !== user) {
             // HACK: Ignore racing condition for now.
-            console.warn("book: booked by another user", { user, advisor, rawTime, slot });
+            this.log('error', "book: booked by another user", { user, advisor, rawTime, slot });
             return null;
         } else {
             if (!slot.user) {
                 slot.user = user;
             } else {
-                console.warn("book: already booked", { user, advisor, rawTime, slot });
+                this.log('warn', "book: already booked", { user, advisor, rawTime, slot });
             }
             return slot;
         }
@@ -48,48 +58,37 @@ class TimeStore {
     cancel(user, advisor, rawTime) {
         const slot = this.find(advisor, rawTime);
         if (!slot) {
-            console.error("cancel: missing timeslot", { user, advisor, rawTime })
+            this.log('error', "cancel: missing timeslot", { user, advisor, rawTime })
             return null;
         } else if (!slot.user) {
             // HACK: Ignore racing condition for now.
-            console.warn("cancel: unbooked timeslot", { user, advisor, rawTime, slot })
+            this.log('error', "cancel: unbooked timeslot", { user, advisor, rawTime, slot })
             return null;
         } else if (slot.user !== user) {
             // HACK: Ignore racing condition for now.
-            console.warn("cancel: booked by another user", { user, advisor, rawTime, slot })
+            this.log('error', "cancel: booked by another user", { user, advisor, rawTime, slot })
             return null;
         } else {
             delete slot.user;
             return slot;
         }
     }
-}
 
-const TIMESTORE_PATH = 'timestore.json';
-
-async function getTimeStore() {
-    try {
-        const availability = await fetchAvailableTimeSlots();
-
-        // convert to timeslots and backup
-        const slots = decodeDatedTimeSlots(availability);
-        fs.writeFileSync(TIMESTORE_PATH, JSON.stringify(slots));
-
-        return new TimeStore(slots);
-    } catch (err) {
-        console.error(err);
-        if (fs.existsSync(TIMESTORE_PATH)) {
-            const slots = JSON.parse(fs.readFileSync(TIMESTORE_PATH));
-            return new TimeStore(slots);
-        } else {
-            throw err;
+    log(level, message, data) {
+        if (this.options.quiet) {
+            return;
         }
+        console[level](message, data);
     }
 }
 
+
+// Thinkful API
+
 function fetchAvailableTimeSlots() {
     return fetch('https://www.thinkful.com/api/advisors/availability')
-        .then(res => res.json());
+        .then(res => res.json())
+        .then(data => decodeDatedTimeSlots(data));
 }
 
 function decodeDatedTimeSlots(data) {
@@ -135,12 +134,54 @@ function encodeDatedTimeSlots(slots) {
     return result;
 }
 
+/**
+ * Extracts date portion of RawTime string.
+ * 
+ * @param {*} rawTime 
+ * @returns {string} ISO-8601 date part (YYYY-MM-DD) 
+ */
 function dateFromRawTime(rawTime) {
     const t = rawTime.indexOf('T');
     return rawTime.substring(0, t);
 }
 
+
+// Snapshots support for when Thinkful API is unavailable.
+
+const SNAPSHOT_PATH = 'timestore.json';
+
+function loadSnapshot() {
+    if (fs.existsSync(SNAPSHOT_PATH)) {
+        return JSON.parse(fs.readFileSync(SNAPSHOT_PATH));
+    } else {
+        return [];
+    }
+}
+
+function saveSnapshot(slots) {
+    fs.writeFileSync(SNAPSHOT_PATH, JSON.stringify(slots));
+}
+
+
+// Convenience
+
+async function getTimeStore() {
+    let slots = [];
+    try {
+        slots = await fetchAvailableTimeSlots();
+        saveSnapshot(slots);
+    } catch (err) {
+        console.error(err);
+        slots = loadSnapshot();
+    }
+    return new TimeStore(slots);
+}
+
+
 module.exports = {
+    fetchAvailableTimeSlots,
     getTimeStore,
-    encodeDatedTimeSlots,
+    loadSnapshot,
+    saveSnapshot,
+    TimeStore,
 }

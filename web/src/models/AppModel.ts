@@ -1,25 +1,25 @@
 import { action, autorun, makeObservable, observable } from "mobx";
 
-import { ITimeSlot, UserID } from "./types";
+import { AdvisorID, RawTime, TimeSlot, UserID } from "./types";
 import { fetchToday, fetchAvailability, fetchBooked, bookTimeSlot, cancelTimeSlot } from "./api";
 
 export interface IAppModel {
     today: string;
     name: UserID;
-    availableTimeSlots: ITimeSlot[];
-    bookedTimeSlots: ITimeSlot[];
+    availableTimeSlots: TimeSlot[];
+    bookedTimeSlots: TimeSlot[];
 
     load(): Promise<void>;
 
-    book(slot: ITimeSlot): Promise<void>;
+    book(slot: TimeSlot): Promise<void>;
     setName(value: string): void;
 }
 
 export class AppModel implements IAppModel {
     today: string = '';
     name: UserID = '';
-    availableTimeSlots: ITimeSlot[] = [];
-    bookedTimeSlots: ITimeSlot[] = [];
+    availableTimeSlots: TimeSlot[] = [];
+    bookedTimeSlots: TimeSlot[] = [];
 
     constructor() {
         makeObservable(this, {
@@ -62,7 +62,15 @@ export class AppModel implements IAppModel {
         this.name = value;
     }
 
-    async book(slot: ITimeSlot): Promise<void> {
+    find(advisor: AdvisorID, rawTime: RawTime): TimeSlot | undefined {
+        let slot = this.bookedTimeSlots.find(s => s.advisor === advisor && s.rawTime === rawTime );
+        if (slot) {
+            return slot;
+        }
+        return this.availableTimeSlots.find(s => s.advisor === advisor && s.rawTime === rawTime );
+    }
+
+    async book(slot: TimeSlot): Promise<void> {
         if (!this.name) {
             this.informUser("Please enter your name to book.");
             return;
@@ -71,18 +79,18 @@ export class AppModel implements IAppModel {
         try {
             const booked = await bookTimeSlot(slot, this.name);
             this.setBookedTimeSlots(booked);
-            this.updateAvailableTimeSlots();
+            await this.updateAvailableTimeSlots();
         } catch (err) {
             console.error(err);
             this.informUser("Failed to book time.");
         }
     }
 
-    async cancel(slot: ITimeSlot): Promise<void> {
+    async cancel(slot: TimeSlot): Promise<void> {
         try {
             const booked = await cancelTimeSlot(slot, this.name);
             this.setBookedTimeSlots(booked);
-            this.updateAvailableTimeSlots();
+            await this.updateAvailableTimeSlots();
         } catch (err) {
             console.error(err);
             this.informUser("Failed to book time.");
@@ -93,11 +101,11 @@ export class AppModel implements IAppModel {
         this.today = value;
     }
 
-    setAvailableTimeSlots(value: ITimeSlot[]) {
+    setAvailableTimeSlots(value: TimeSlot[]) {
         this.availableTimeSlots = value;
     }
 
-    setBookedTimeSlots(value: ITimeSlot[]) {
+    setBookedTimeSlots(value: TimeSlot[]) {
         this.bookedTimeSlots = value;
     }
 

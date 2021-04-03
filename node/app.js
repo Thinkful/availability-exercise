@@ -5,7 +5,7 @@ const bodyParser = require("body-parser");
 const fetch = require("node-fetch");
 
 const { isValidUser } = require("./sanity");
-const { getTimeStore, encodeDatedTimeSlots } = require("./timestore");
+const { getTimeStore } = require("./timestore");
 
 const app = express();
 app.use(cors());
@@ -24,7 +24,7 @@ getTimeStore().then(ts => {
 })
 
 app.get("/api/availability", (req, res) => {
-    res.json(encodeDatedTimeSlots(timeStore.unbooked()));
+    res.json(timeStore.unbookedDatedTimeSlots());
 })
 
 app.get("/api/booked", (req, res) => {
